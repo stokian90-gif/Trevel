@@ -27,6 +27,7 @@ import {
 } from '@/lib/types';
 import { Btn, ErrorBox, Field, MiniMap, Modal, StarRating, Toast } from '@/components/ui';
 import LeafletMap from '@/components/LeafletMap';
+import { useTravelSettings } from '@/lib/settings';
 
 const SUB_PRICE = 450000;
 
@@ -58,6 +59,7 @@ export default function CustomerApp({ onLogout }: { onLogout: () => void }) {
   const [stars, setStars] = useState(5);
   const [sosOpen, setSosOpen] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
+  const appSettings = useTravelSettings();
 
   const loadAll = useCallback(async (u: UserRow) => {
     try {
@@ -301,10 +303,15 @@ export default function CustomerApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-slate-100 pb-24">
+      {appSettings.banner && (
+        <div className="max-w-md mx-auto px-4 pt-4">
+          <img src={appSettings.banner} alt="Banner" className="w-full h-32 object-cover rounded-2xl shadow-md" />
+        </div>
+      )}
       <header className="bg-emerald-700 text-white px-4 py-4 flex items-center justify-between sticky top-0 z-30 shadow-lg">
         <div>
-          <h1 className="font-bold leading-tight">Travel Indramayu</h1>
-          <p className="text-[11px] text-emerald-200">24 JAM AMAN & NYAMAN</p>
+          <h1 className="font-bold leading-tight">{appSettings.travelName}</h1>
+          <p className="text-[11px] text-emerald-200">{appSettings.tagline}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setSosOpen(true)} className="bg-red-600 hover:bg-red-500 animate-pulse-slow px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1">

@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Car, Clock, ShieldCheck, User, Users, Wallet } from 'lucide-react';
+import { useTravelSettings } from '@/lib/settings';
 
 type Role = 'customer' | 'driver' | 'owner';
 
 export default function Home({ onPick }: { onPick: (r: Role) => void }) {
+  const appSettings = useTravelSettings();
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-700 via-emerald-800 to-slate-900 text-white flex flex-col">
       <header className="px-6 pt-14 pb-6 text-center">
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-white/10 backdrop-blur border border-white/20 mb-5">
           <Car size={40} className="text-emerald-300" />
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Travel Indramayu</h1>
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">{appSettings.travelName}</h1>
         <p className="mt-2 flex items-center justify-center gap-2 text-emerald-200 font-semibold text-sm">
-          <ShieldCheck size={16} /> 24 JAM AMAN & NYAMAN
+          <ShieldCheck size={16} /> {appSettings.tagline}
         </p>
       </header>
 

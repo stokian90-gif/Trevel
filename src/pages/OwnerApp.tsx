@@ -5,6 +5,7 @@ import {
   LogOut,
   MapPin,
   Plus,
+  Settings,
   ShoppingCart,
   Trash2,
   Users,
@@ -15,11 +16,15 @@ import {
   OrderRow,
   RouteRow,
   formatRupiah,
-  getErrorMessage,
-  rushPrice,
 } from '@/lib/types';
 import { Btn, ErrorBox, Field, MiniMap, Modal, Toast } from '@/components/ui';
 import LeafletMap, { CITY_COORDS, MapDriver } from '@/components/LeafletMap';
+import {
+  MAX_BANNER_BYTES,
+  TravelSettings,
+  loadSettings,
+  saveSettings,
+} from '@/lib/settings';
 
 export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const [authed, setAuthed] = useState(false);
@@ -31,9 +36,15 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [routes, setRoutes] = useState<RouteRow[]>([]);
-  const [tab, setTab] = useState<'dash' | 'orders' | 'drivers' | 'routes'>('dash');
+  const [tab, setTab] = useState<'dash' | 'orders' | 'drivers' | 'routes' | 'settings'>('dash');
   const [addRouteOpen, setAddRouteOpen] = useState(false);
   const [editing, setEditing] = useState<RouteRow | null>(null);
+
+  // pengaturan banner & nama travel (localStorage)
+  const [settings, setSettings] = useState<TravelSettings>(loadSettings);
+  const [nameDraft, setNameDraft] = useState('');
+  const [taglineDraft, setTaglineDraft] = useState('');
+  const [settingsError, setSettingsError] = useState('');
 
   // form rute
   const [o, setO] = useState('');
@@ -41,6 +52,13 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const [pe, setPe] = useState('');
   const [pc, setPc] = useState('');
   const [pp, setPp] = useState('');
+
+  // pindah hook yang tadinya ada di tengah render ke sini (penyebab layar putih)
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 3000);
+    return () => clearInterval(t);
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -72,6 +90,14 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
       supabase.removeChannel(ch);
     };
   }, [authed, loadAll]);
+
+  const openSettings = () => {
+    const s = loadSettings();
+    setNameDraft(s.travelName);
+    setTaglineDraft(s.tagline);
+    setSettingsError('');
+    setTab('settings');
+  };
 
   const login = () => {
     if (username.trim() !== 'admin' && username.trim() !== 'owner') {
@@ -150,25 +176,35 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  if (!authed) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7">
-          <h2 className="text-xl font-bold text-center text-slate-800 mb-1">Masuk Owner</h2>
-          <p className="text-xs text-slate-500 text-center mb-5">Khusus pemilik armada</p>
-          <div className="space-y-3">
-            <Field label="Username" value={username} onChange={setUsername} placeholder="admin" />
-            <Field label="PIN" value={pin} onChange={setPin} type="password" placeholder="PIN owner" />
-            <ErrorBox message={error} />
-            <Btn onClick={login} className="w-full">Masuk Dashboard</Btn>
-            <button onClick={onLogout} className="w-full text-xs text-slate-400 hover:text-slate-600 py-2">
-              Kembali ke halaman utama
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const saveTravelInfo = () => {
+    if (nameDraft.trim().length < 3) return setSettingsError('Nama travel minimal 3 huruf');
+    if (taglineDraft.trim().length < 3) return setSettingsError('Tagline minimal 3 huruf');
+    const s = loadSettings();
+    const ok = saveSettings({ ...s, travelName: nameDraft.trim(), tagline: taglineDraft.trim() });
+    if (!ok) return setSettingsError('Gagal menyimpan (penyimpanan penuh)');
+    setSettings(loadSettings());
+    setSettingsError('');
+    setToast('Nama travel & tagline diperbarui');
+  };
+
+  const onBannerFile = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return setSettingsError('File harus berupa gambar (JPG/PNG)');
+    if (file.size > MAX_BANNER_BYTES) return setSettingsError('Gambar terlalu besar, maksimal sekitar 1.5 MB');
+    setSettingsError('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = loadSettings();
+      if (saveSettings({ ...s, banner: String(reader.result) })) {
+        setSettings(loadSettings());
+        setToast('Banner diperbarui');
+      } else {
+        setSettingsError('Gagal menyimpan banner (penyimpanan penuh)');
+      }
+    };
+    reader.onerror = () => setSettingsError('Gagal membaca gambar, coba lagi');
+    reader.readAsDataURL(file);
+  };
 
   // statistik
   const today = new Date().toISOString().slice(0, 10);
@@ -176,12 +212,7 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const todayRevenue = todayOrders.filter((x) => x.status === 'Sampai').reduce((s, x) => s + x.price, 0);
   const onlineDrivers = drivers.filter((x) => x.is_online);
 
-  // posisi driver bergerak: tiap driver bergerak bolak-balik pada rute berdasarkan id-nya
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick((v) => v + 1), 3000);
-    return () => clearInterval(t);
-  }, []);
+  // posisi driver bergerak pada rutenya masing-masing
   const driverPoints: MapDriver[] = onlineDrivers.map((drv, i) => {
     const seed = drv.id.charCodeAt(0) + i * 7;
     const routeEnds = ['Jakarta', 'Bandung', 'Cirebon', 'Haurgeulis'];
@@ -207,27 +238,56 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   });
   const maxWeek = Math.max(1, ...weekData.map((w) => w.total));
 
+  if (!authed) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7">
+          <h2 className="text-xl font-bold text-center text-slate-800 mb-1">Masuk Owner</h2>
+          <p className="text-xs text-slate-500 text-center mb-5">Khusus pemilik armada</p>
+          <div className="space-y-3">
+            <Field label="Username" value={username} onChange={setUsername} placeholder="admin" />
+            <Field label="PIN" value={pin} onChange={setPin} type="password" placeholder="PIN owner" />
+            <ErrorBox message={error} />
+            <Btn onClick={login} className="w-full">Masuk Dashboard</Btn>
+            <button onClick={onLogout} className="w-full text-xs text-slate-400 hover:text-slate-600 py-2">
+              Kembali ke halaman utama
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const tabs = [
+    ['dash', 'Ringkasan'],
+    ['orders', 'Order'],
+    ['drivers', 'Driver'],
+    ['routes', 'Rute & Harga'],
+    ['settings', 'Pengaturan'],
+  ] as const;
+
   return (
     <div className="min-h-screen bg-slate-100 pb-24">
       <header className="bg-slate-900 text-white px-4 py-4 sticky top-0 z-30 shadow-lg">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="font-bold leading-tight">Dashboard Owner</h1>
-            <p className="text-[11px] text-slate-400">Travel Indramayu - 24 JAM</p>
+            <p className="text-[11px] text-slate-400">{settings.travelName} - {settings.tagline}</p>
           </div>
           <button onClick={logout} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl" title="Keluar">
             <LogOut size={16} />
           </button>
         </div>
         <div className="max-w-4xl mx-auto flex gap-2 mt-3 overflow-x-auto">
-          {([['dash', 'Ringkasan'], ['orders', 'Order'], ['drivers', 'Driver'], ['routes', 'Rute & Harga']] as const).map(([k, lbl]) => (
+          {tabs.map(([k, lbl]) => (
             <button
               key={k}
-              onClick={() => setTab(k)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
+              onClick={() => (k === 'settings' ? openSettings() : setTab(k))}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition flex items-center gap-1 ${
                 tab === k ? 'bg-emerald-500 text-white' : 'bg-white/10 text-slate-300 hover:bg-white/20'
               }`}
             >
+              {k === 'settings' && <Settings size={12} />}
               {lbl}
             </button>
           ))}
@@ -352,6 +412,55 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {tab === 'settings' && (
+          <div className="space-y-4">
+            <section className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+              <h2 className="font-bold text-slate-800">Ubah Nama Travel & Tagline</h2>
+              <Field label="Nama Travel" value={nameDraft} onChange={setNameDraft} placeholder="Travel Indramayu" />
+              <Field label="Tagline" value={taglineDraft} onChange={setTaglineDraft} placeholder="24 JAM AMAN & NYAMAN" />
+              <Btn onClick={saveTravelInfo} className="w-full">Simpan Nama & Tagline</Btn>
+            </section>
+
+            <section className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+              <h2 className="font-bold text-slate-800">Banner Halaman Customer</h2>
+              {settings.banner ? (
+                <div className="relative rounded-xl overflow-hidden border border-slate-200">
+                  <img src={settings.banner} alt="Preview banner" className="w-full h-40 object-cover" />
+                  <button
+                    onClick={() => {
+                      const s = loadSettings();
+                      saveSettings({ ...s, banner: null });
+                      setSettings(loadSettings());
+                      setToast('Banner dihapus, kembali ke warna hijau');
+                    }}
+                    className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+                  >
+                    Hapus Banner
+                  </button>
+                </div>
+              ) : (
+                <div className="h-32 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-800 grid place-items-center text-white text-sm font-semibold">
+                  Belum ada banner - memakai warna hijau bawaan
+                </div>
+              )}
+              <label className="block">
+                <span className="inline-block cursor-pointer bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition">
+                  Upload Foto Banner
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => onBannerFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <p className="text-[11px] text-slate-400">Format gambar apa saja, maksimal sekitar 1.5 MB. Tersimpan di perangkat ini.</p>
+            </section>
+
+            {settingsError && <ErrorBox message={settingsError} onRetry={() => setSettingsError('')} />}
           </div>
         )}
       </main>
