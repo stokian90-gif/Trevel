@@ -19,6 +19,7 @@ import {
   rushPrice,
 } from '@/lib/types';
 import { Btn, ErrorBox, Field, MiniMap, Modal, Toast } from '@/components/ui';
+import LeafletMap, { CITY_COORDS, MapDriver } from '@/components/LeafletMap';
 
 export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const [authed, setAuthed] = useState(false);
@@ -175,6 +176,26 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
   const todayRevenue = todayOrders.filter((x) => x.status === 'Sampai').reduce((s, x) => s + x.price, 0);
   const onlineDrivers = drivers.filter((x) => x.is_online);
 
+  // posisi driver bergerak: tiap driver bergerak bolak-balik pada rute berdasarkan id-nya
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 3000);
+    return () => clearInterval(t);
+  }, []);
+  const driverPoints: MapDriver[] = onlineDrivers.map((drv, i) => {
+    const seed = drv.id.charCodeAt(0) + i * 7;
+    const routeEnds = ['Jakarta', 'Bandung', 'Cirebon', 'Haurgeulis'];
+    const dest = routeEnds[seed % routeEnds.length];
+    const destC = CITY_COORDS[dest];
+    const phase = ((tick * 0.05 + seed * 0.13) % 1);
+    return {
+      id: drv.id,
+      name: `${drv.name} (${drv.plate})`,
+      lat: CITY_COORDS.Indramayu[0] + (destC[0] - CITY_COORDS.Indramayu[0]) * phase,
+      lng: CITY_COORDS.Indramayu[1] + (destC[1] - CITY_COORDS.Indramayu[1]) * phase,
+    };
+  });
+
   const weekData = Array.from({ length: 7 }, (_, i) => {
     const dt = new Date();
     dt.setDate(dt.getDate() - (6 - i));
@@ -251,6 +272,7 @@ export default function OwnerApp({ onLogout }: { onLogout: () => void }) {
               <h2 className="font-bold text-slate-800 flex items-center gap-2">
                 <MapPin size={18} className="text-emerald-600" /> Peta Live Semua Driver Online
               </h2>
+              <LeafletMap drivers={driverPoints} height={280} fitRoute={false} />
               <MiniMap allDrivers driverOnline={onlineDrivers.map((drv, i) => ({ id: drv.id, name: drv.name, p: (i % 5) / 5 + 0.1 }))} />
               <p className="text-xs text-slate-500">Laporan hari ini: {todayOrders.filter((x) => x.status === 'Sampai').length} trip selesai, {todayOrders.filter((x) => x.status === 'Dibatalkan').length} batal.</p>
             </div>

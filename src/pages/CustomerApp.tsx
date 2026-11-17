@@ -26,6 +26,7 @@ import {
   priceForRoute,
 } from '@/lib/types';
 import { Btn, ErrorBox, Field, MiniMap, Modal, StarRating, Toast } from '@/components/ui';
+import LeafletMap from '@/components/LeafletMap';
 
 const SUB_PRICE = 450000;
 
@@ -330,6 +331,8 @@ export default function CustomerApp({ onLogout }: { onLogout: () => void }) {
             <h2 className="font-bold text-slate-800 flex items-center gap-2">
               <Search size={18} className="text-emerald-600" /> Cari Rute
             </h2>
+
+            <LeafletMap destination={selectedRoute?.destination ?? null} height={220} />
 
             <div>
               <span className="block text-xs font-semibold text-slate-600 mb-1.5">Rute Tujuan</span>
